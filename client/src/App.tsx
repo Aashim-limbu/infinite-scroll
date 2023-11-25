@@ -1,35 +1,63 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useRef, useState } from "react";
+import { parseLinkHeader } from "./parseLinkHeader";
+import { baseURL } from "./api/base";
+
+type Photo = {
+	albumId: number;
+	id: number;
+	title: string;
+	url: string;
+	thumbnailUrl: string;
+};
 
 function App() {
-  const [count, setCount] = useState(0)
+	const [photos, setPhotos] = useState<Photo[]>([]);
+	const nextPhotoURLRef = useRef<string>();
+	const imageRef = useCallback((image : HTMLImageElement) => {
+        if (image == null) return;
+		const observer = new IntersectionObserver((entries) => {
+			if (entries[0].isIntersecting) {
+				fetchPhotos(nextPhotoURLRef.current, { overwrite: false });
+				observer.unobserve(image);
+			}
+		});
+		observer.observe(image);
+	}, []);
 
-  return (
-    <>
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+	function fetchPhotos(url?: string, { overwrite = false } = {}) {
+		if (!url) return;
+		baseURL.get(url).then((res) => {
+			if (res.headers == null) return;
+			if (typeof res.headers.get === "function") {
+				nextPhotoURLRef.current = parseLinkHeader(
+					res.headers.get("link")
+				)?.next;
+			}\
+			const photos = res.data;
+            console.log(photos)
+			if (overwrite) setPhotos(photos);
+			else {
+				setPhotos((p) => [...p, ...photos]);
+			}
+		});
+	}
+
+	useEffect(() => {
+		fetchPhotos("/photos?_page=1&_limit=10", { overwrite: true });
+	}, []);
+
+	return (
+		<div className="grid p-2 mx-auto grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+			{photos.map((photo, index) => (
+				<img
+					key={photo.id}
+					src={photo.url}
+					ref={photos.length - 1 == index ? imageRef : undefined}
+					className="mx-auto"
+				/>
+			))}
+		</div>
+	);
 }
 
-export default App
+export default App;
